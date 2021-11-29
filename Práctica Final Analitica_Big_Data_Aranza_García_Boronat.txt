@@ -1,0 +1,319 @@
+
+1º paso levantar docker:
+__________________________________
+
+docker pull mafernandezd/big_data:v4
+
+docker run -dit -p 4040:4040 -p 50070:50070 -p 8080:8080 -p 8081:8081 mafernandezd/big_data:v4
+
+doccker ps     -> para ver el container ID
+
+docker exec -it 844e67f01f43 bash
+
+Descargar los ficheros con los que hay que trabajar:
+____________________________________________________
+
+wget https://gist.githubusercontent.com/mafernandez-stratio/d0e23a330faa04781428df23d93e5e92/raw/5686a815085b3d7948fea986888fe4caa575a344/stdout.log -O /root/stdout.log
+wget https://gist.githubusercontent.com/mafernandez-stratio/15b0ab5c9b01cff72dd0f0c9a7eae1e6/raw/a28925802f68c7ed15405b1af2ebbacfc2fe763d/users.txt -O /root/usuarios.csv
+wget https://gist.githubusercontent.com/mafernandez-stratio/a5f27cf48bb37f517e89af3617d85fba/raw/f96aedcd21dab3589ab11a6b714e44accd83e4d3/departments.json -O /root/departments.json
+
+*********************************
+Comprobar que hay en los ficheros
+*********************************
+
+head -n10 /root/stdout.log
+->
+2019-04-01T19:49:02.976+0000 INFO postgres 1 - PerformAuthentication {"@message":"connection authorized: user=postgres database=postgres SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)","@data":{}}
+2019-04-01T19:49:02.980+0000 INFO postgres 1 - exec_execute_message {"@message":"execute <unnamed>: SET extra_float_digits = 3","@data":{}}
+2019-04-01T19:49:02.982+0000 INFO postgres 1 - exec_execute_message {"@message":"execute <unnamed>: select 1","@data":{}}
+2019-04-01T19:49:02.984+0000 INFO postgres 1 - log_disconnections {"@message":"disconnection: session time: 0:00:00.041 user=postgres database=postgres host=172.25.65.70 port=36764","@data":{}}
+2019-04-01T19:49:07.935+0000 INFO - 0 - BackendInitialize {"@message":"connection received: host=172.25.65.70 port=36788","@data":{}}
+2019-04-01T19:49:07.936+0000 INFO - 0 - ProcessStartupPacket {"@message":"incomplete startup packet","@data":{}}
+2019-04-01T19:49:07.938+0000 INFO - 0 - BackendInitialize {"@message":"connection received: host=172.25.65.70 port=36790","@data":{}}
+2019-04-01T19:49:07.991+0000 INFO postgres 1 - PerformAuthentication {"@message":"connection authorized: user=postgres database=postgres SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)","@data":{}}
+2019-04-01T19:49:07.995+0000 INFO postgres 1 - exec_execute_message {"@message":"execute <unnamed>: SET extra_float_digits = 3","@data":{}}
+2019-04-01T19:49:07.998+0000 INFO postgres 1 - exec_execute_message {"@message":"execute <unnamed>: select 1","@data":{}}
+
+head -n10 /root/usuarios.csv
+->
+root@844e67f01f43:/# head -n10 /root/usuarios.csv
+id,username,age,country,year,email,gender,department
+1,'postgres',22,'Spain',2012,'postgres@gmail.com','male','Marketing'
+2,'commandcenter',33,'France',2015,'commandcenter@outlook.com','female','Sales'
+3,'dg-bootstrap',30,'Germany',2014,'dg-bootstrap@yahoo.com','male','IT'root@844e67f01f43:/#
+
+head -n10 /root/departments.json
+->
+{"name":"Sales","employees":5,"managers":["SpongeBob","Goku"],"budget":421000,"pet":{"name":"Winnie","age":12,"animal":"Bear"}}
+{"name":"IT","employees":4,"managers":["SpongeBob","Doraemon"],"budget":356000,"pet":{"name":"Donald","age":12,"animal":"Duck"}}
+
+Entrar en Scala:
+_______________________
+
+cd root/spark-2.4.4-bin-hadoop2.7/
+
+bin/spark-shell
+
+scala>
+
+**************
+Pregunta 1
+**************
+scala> 
+case class LogInfo(time: String, level: String, user: String, process: Int, audit: String, action: String, message: String)
+->defined class LogInfo
+
+scala>
+val rddlogs = sc.textFile("/root/stdout.log").map(_.split("\\{\"@message\"\\:").map(_.replaceAll("\",\"@data\"\\:\\{\\}\\}", ""))).map(lineArray => lineArray.head.split(" ") ++ Array(lineArray.last)).map(l =>LogInfo(l(0), l(1), l(2), l(3).toInt, l(4), l(5), l(6)))
+ -> rddlogs: org.apache.spark.rdd.RDD[LogInfo] = MapPartitionsRDD[4] at map at <console>:26
+
+scala>
+rddlogs.count
+-> res1: Long =11628
+
+scala>
+rddlogs.take(10).foreach(println)
+->
+LogInfo(2019-04-01T19:49:02.976+0000,INFO,postgres,1,-,PerformAuthentication,"connection authorized: user=postgres database=postgres SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off))
+LogInfo(2019-04-01T19:49:02.980+0000,INFO,postgres,1,-,exec_execute_message,"execute <unnamed>: SET extra_float_digits = 3)
+LogInfo(2019-04-01T19:49:02.982+0000,INFO,postgres,1,-,exec_execute_message,"execute <unnamed>: select 1)
+LogInfo(2019-04-01T19:49:02.984+0000,INFO,postgres,1,-,log_disconnections,"disconnection: session time: 0:00:00.041 user=postgres database=postgres host=172.25.65.70 port=36764)
+LogInfo(2019-04-01T19:49:07.935+0000,INFO,-,0,-,BackendInitialize,"connection received: host=172.25.65.70 port=36788)
+LogInfo(2019-04-01T19:49:07.936+0000,INFO,-,0,-,ProcessStartupPacket,"incomplete startup packet)
+LogInfo(2019-04-01T19:49:07.938+0000,INFO,-,0,-,BackendInitialize,"connection received: host=172.25.65.70 port=36790)
+LogInfo(2019-04-01T19:49:07.991+0000,INFO,postgres,1,-,PerformAuthentication,"connection authorized: user=postgres database=postgres SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off))
+LogInfo(2019-04-01T19:49:07.995+0000,INFO,postgres,1,-,exec_execute_message,"execute <unnamed>: SET extra_float_digits = 3)
+LogInfo(2019-04-01T19:49:07.998+0000,INFO,postgres,1,-,exec_execute_message,"execute <unnamed>: select 1)
+
+scala>
+import scala.util._
+
+scala>
+val df = spark.createDataFrame(rddlogs)
+->df: org.apache.spark.sql.DataFrame = [time: string, level: string ... 5 more fields]
+
+
+**************
+Pregunta 2
+**************
+scala>
+df.createTempView("logs")
+
+scala>
+spark.sql("SELECT * FROM logs LIMIT 1").show(50, false)
++----------------------------+-----+--------+-------+-----+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
+|time                        |level|user    |process|audit|action               |message                                                                                                                                    |
++----------------------------+-----+--------+-------+-----+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
+|2019-04-01T19:49:02.976+0000|INFO |postgres|1      |-    |PerformAuthentication|"connection authorized: user=postgres database=postgres SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)|
++----------------------------+-----+--------+-------+-----+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
+
+
+
+**********
+Pregunta 3
+**********
+
+scala>
+spark.sql("""CREATE TABLE usuarios USING csv OPTIONS (path'/root/usuarios.csv',header 'true',quote="'",inferSchema 'true')""")
+21/04/28 18:19:37 WARN HiveExternalCatalog: Couldn't find corresponding Hive SerDe for data source provider csv. Persisting data source table `default`.`usuarios` into Hive metastore in Spark SQL specific format, which is NOT compatible with Hive.
+res2: org.apache.spark.sql.DataFrame = []
+
+scala>
+spark.sql("SELECT * FROM usuarios LIMIT 1").show(50, false)
++---+--------+---+-------+----+------------------+------+----------+
+|id |username|age|country|year|email             |gender|department|
++---+--------+---+-------+----+------------------+------+----------+
+|1  |postgres|22 |Spain  |2012|postgres@gmail.com|male  |Marketing |
++---+--------+---+-------+----+------------------+------+----------+
+
+scala> 
+spark.sql("SHOW TABLES").show(50,false)
++--------+-------------+-----------+
+|database|tableName    |isTemporary|
++--------+-------------+-----------+
+|default |ufo_sightings|false      |
+|default |usuarios     |false      |
+|default |winemag      |false      |
+|        |logs         |true       |
++--------+-------------+-----------+
+
+***********
+Pregunta 4
+**********
+scala> 
+val df2 = spark.read.json("/root/departments.json")
+->df2: org.apache.spark.sql.DataFrame = [budget: bigint, employees: bigint ... 3 more fields]
+
+scala> 
+df2.createTempView("departamentos")
+
+scala> 
+spark.sql("SELECT * FROM departamentos LIMIT 1").show(50, false)
++------+---------+-----------------+-----+------------------+
+|budget|employees|managers         |name |pet               |
++------+---------+-----------------+-----+------------------+
+|421000|5        |[SpongeBob, Goku]|Sales|[12, Bear, Winnie]|
++------+---------+-----------------+-----+------------------+
+
+******************
+scala> Triple JOIN
+******************
+
+scala> 
+val df3 = spark.sql("SELECT * FROM logs JOIN usuarios ON logs.user=usuarios.username JOIN departamentos ON usuarios.department=departamentos.name")
+->df3: org.apache.spark.sql.DataFrame = [time: string, level: string ... 18 more fields]
+
+scala> df3.show(5,false)
++----------------------------+-----+--------+-------+-----+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------+---+--------+---+-------+----+------------------+------+----------+------+---------+---------+---------+----------------+
+|time                        |level|user    |process|audit|action               |message                                                                                                                                    |id |username|age|country|year|email             |gender|department|budget|employees|managers |name     |pet             |
++----------------------------+-----+--------+-------+-----+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------+---+--------+---+-------+----+------------------+------+----------+------+---------+---------+---------+----------------+
+|2019-04-01T19:49:02.976+0000|INFO |postgres|1      |-    |PerformAuthentication|"connection authorized: user=postgres database=postgres SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)|1  |postgres|22 |Spain  |2012|postgres@gmail.com|male  |Marketing |275000|3        |[Pikachu]|Marketing|[11, Dog, Pluto]|
+|2019-04-01T19:49:02.980+0000|INFO |postgres|1      |-    |exec_execute_message |"execute <unnamed>: SET extra_float_digits = 3                                                                                             |1  |postgres|22 |Spain  |2012|postgres@gmail.com|male  |Marketing |275000|3        |[Pikachu]|Marketing|[11, Dog, Pluto]|
+|2019-04-01T19:49:02.982+0000|INFO |postgres|1      |-    |exec_execute_message |"execute <unnamed>: select 1                                                                                                               |1  |postgres|22 |Spain  |2012|postgres@gmail.com|male  |Marketing |275000|3        |[Pikachu]|Marketing|[11, Dog, Pluto]|
+|2019-04-01T19:49:02.984+0000|INFO |postgres|1      |-    |log_disconnections   |"disconnection: session time: 0:00:00.041 user=postgres database=postgres host=172.25.65.70 port=36764                                     |1  |postgres|22 |Spain  |2012|postgres@gmail.com|male  |Marketing |275000|3        |[Pikachu]|Marketing|[11, Dog, Pluto]|
+|2019-04-01T19:49:07.991+0000|INFO |postgres|1      |-    |PerformAuthentication|"connection authorized: user=postgres database=postgres SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)|1  |postgres|22 |Spain  |2012|postgres@gmail.com|male  |Marketing |275000|3        |[Pikachu]|Marketing|[11, Dog, Pluto]|
++----------------------------+-----+--------+-------+-----+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------+---+--------+---+-------+----+------------------+------+----------+------+---------+---------+---------+----------------
+
+scala> df3.createTempView("todo")
+
+scala> spark.sql("SHOW TABLES").show(50,false)
++--------+-------------+-----------+
+|database|tableName    |isTemporary|
++--------+-------------+-----------+
+|default |ufo_sightings|false      |
+|default |usuarios     |false      |
+|default |winemag      |false      |
+|        |departamentos|true       |
+|        |logs         |true       |
+|        |todo         |true       |
++--------+-------------+-----------+
+
+***************
+Pregunta 5
+***************
+scala>
+val user_uso = spark.sql("SELECT DISTINCT(user) AS name_user FROM logs")
+->user_uso: org.apache.spark.sql.DataFrame = [name_user: string]
+
+scala> user_uso.show
++-------------+
+|    name_user|
++-------------+
+|     postgres|
+| dg-bootstrap|
+|            -|
+|commandcenter|
++-------------+
+
+
+****************
+Pregunta 6
+***************
+
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+
+
+scala> val action = spark.sql("SELECT user, action, count(action) FROM logs GROUP BY user, action")
+action: org.apache.spark.sql.DataFrame = [user: string, action: string ... 1 more field]
+
+scala> action.filter('action === "exec_execute_message").show(false)
++-------------+--------------------+-------------+
+|user         |action              |count(action)|
++-------------+--------------------+-------------+
+|dg-bootstrap |exec_execute_message|20           |
+|commandcenter|exec_execute_message|6237         |
+|postgres     |exec_execute_message|1520         |
++-------------+--------------------+-------------+
+
+************
+Pregunta 7
+************
+scala> 
+df3.filter(df3("action") === "log_disconnections" && df3("age") > 25 ).createTempView("mensajes_logs")
+
+scala> spark.sql("SELECT message FROM mensajes_logs").show(false)
++-------------------------------------------------------------------------------------------------------------+
+|message                                                                                                      |
++-------------------------------------------------------------------------------------------------------------+
+|"disconnection: session time: 0:33:00.290 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56180|
+|"disconnection: session time: 0:32:53.072 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56280|
+|"disconnection: session time: 0:33:12.760 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56364|
+|"disconnection: session time: 0:33:03.755 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56504|
+|"disconnection: session time: 0:33:04.980 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56510|
+|"disconnection: session time: 0:33:15.964 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56588|
+|"disconnection: session time: 0:32:46.578 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56664|
+|"disconnection: session time: 0:32:38.230 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56758|
+|"disconnection: session time: 0:32:43.283 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56898|
+|"disconnection: session time: 0:32:58.505 user=dg-bootstrap database=postgreseos host=172.25.72.69 port=56900|
++-------------------------------------------------------------------------------------------------------------+
+
+
+************
+Pregusta 8
+***********
+
+scala> 
+df3.printSchema
+->
+root
+ |-- time: string (nullable = true)
+ |-- level: string (nullable = true)
+ |-- user: string (nullable = true)
+ |-- process: integer (nullable = false)
+ |-- audit: string (nullable = true)
+ |-- action: string (nullable = true)
+ |-- message: string (nullable = true)
+ |-- id: integer (nullable = true)
+ |-- username: string (nullable = true)
+ |-- age: integer (nullable = true)
+ |-- country: string (nullable = true)
+ |-- year: integer (nullable = true)
+ |-- email: string (nullable = true)
+ |-- gender: string (nullable = true)
+ |-- department: string (nullable = true)
+ |-- budget: long (nullable = true)
+ |-- employees: long (nullable = true)
+ |-- managers: array (nullable = true)
+ |    |-- element: string (containsNull = true)
+ |-- name: string (nullable = true)
+ |-- pet: struct (nullable = true)
+ |    |-- age: long (nullable = true)
+ |    |-- animal: string (nullable = true)
+ |    |-- name: string (nullable = true)
+
+scala> 
+df3.filter(df3("pet.name") === "Pluto").createTempView("logs_Pluto")
+
+scala> 
+spark.sql("SELECT pet, count(message) FROM logs_Pluto GROUP BY pet").show(false)
++----------------+--------------+
+|pet             |count(message)|
++----------------+--------------+
+|[11, Dog, Pluto]|3040          |
++----------------+--------------+
+
+
+
+*************
+Pregunta 9
+*************
+scala>
+df3.filter(array_contains(df3("managers"),"SpongeBob")).createTempView("logs_SpongeBob")
+
+scala> 
+spark.sql("SELECT managers, avg(age) FROM logs_SpongeBob GROUP BY managers").show(false)
++---------------------+--------+
+|managers             |avg(age)|
++---------------------+--------+
+|[SpongeBob, Doraemon]|30.0    |
+|[SpongeBob, Goku]    |33.0    |
++---------------------+--------+
+
+scala> spark.sql("SELECT managers, mean(age) FROM logs_SpongeBob GROUP BY managers").show(false)
++---------------------+--------+
+|managers             |avg(age)|
++---------------------+--------+
+|[SpongeBob, Doraemon]|30.0    |
+|[SpongeBob, Goku]    |33.0    |
++---------------------+--------+
